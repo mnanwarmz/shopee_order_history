@@ -12,40 +12,40 @@ function injectInterceptionScript() {
   script.textContent = `
     (function() {
       console.log('🚀 Injecting network interception into page context...');
-      
+
       // Store collected data in window object for content script access
       window.shopeeCollectedData = window.shopeeCollectedData || [];
       window.shopeeCollectedPages = window.shopeeCollectedPages || new Set();
-      
+
       // Store original methods
       const originalFetch = window.fetch;
       const originalXHROpen = XMLHttpRequest.prototype.open;
       const originalXHRSend = XMLHttpRequest.prototype.send;
-      
+
       // Intercept fetch requests
       window.fetch = function(...args) {
         const url = typeof args[0] === 'string' ? args[0] : args[0].url;
-        
+
         return originalFetch.apply(this, args).then(response => {
           // Check if this is the order API we want
           if (url && url.includes('/api/v4/order/get_all_order_and_checkout_list')) {
             console.log('🎯 Intercepted order API via fetch:', url);
-            
+
             // Clone response to avoid consuming it
             const clonedResponse = response.clone();
             clonedResponse.json().then(data => {
               console.log('📦 Fetch response data:', data);
-              
+
               if (data && data.data?.order_data?.details_list) {
                 // Extract offset from URL to track pages
                 const offsetMatch = url.match(/offset=(\\d+)/);
                 const offset = offsetMatch ? parseInt(offsetMatch[1]) : 0;
-                
+
                 if (!window.shopeeCollectedPages.has(offset)) {
                   window.shopeeCollectedData.push(data);
                   window.shopeeCollectedPages.add(offset);
                   console.log('✅ Stored data for offset', offset, 'Total pages:', window.shopeeCollectedData.length);
-                  
+
                   // Trigger custom event for content script
                   window.dispatchEvent(new CustomEvent('shopeeDataCollected', {
                     detail: { offset, totalPages: window.shopeeCollectedData.length }
@@ -56,40 +56,40 @@ function injectInterceptionScript() {
               console.log('❌ Failed to parse fetch response:', err);
             });
           }
-          
+
           return response;
         });
       };
-      
+
       // Intercept XMLHttpRequest
       XMLHttpRequest.prototype.open = function(method, url, ...args) {
         this._interceptedUrl = url;
         return originalXHROpen.apply(this, [method, url, ...args]);
       };
-      
+
       XMLHttpRequest.prototype.send = function(...args) {
         const xhr = this;
-        
+
         // Add load event listener
         xhr.addEventListener('load', function() {
           const url = xhr._interceptedUrl;
           if (url && url.includes('/api/v4/order/get_all_order_and_checkout_list')) {
             console.log('🎯 Intercepted order API via XHR:', url);
-            
+
             try {
               const data = JSON.parse(xhr.responseText);
               console.log('📦 XHR response data:', data);
-              
+
               if (data && data.data?.order_data?.details_list) {
                 // Extract offset from URL to track pages
                 const offsetMatch = url.match(/offset=(\\d+)/);
                 const offset = offsetMatch ? parseInt(offsetMatch[1]) : 0;
-                
+
                 if (!window.shopeeCollectedPages.has(offset)) {
                   window.shopeeCollectedData.push(data);
                   window.shopeeCollectedPages.add(offset);
                   console.log('✅ Stored XHR data for offset', offset, 'Total pages:', window.shopeeCollectedData.length);
-                  
+
                   // Trigger custom event for content script
                   window.dispatchEvent(new CustomEvent('shopeeDataCollected', {
                     detail: { offset, totalPages: window.shopeeCollectedData.length }
@@ -101,18 +101,18 @@ function injectInterceptionScript() {
             }
           }
         });
-        
+
         return originalXHRSend.apply(this, args);
       };
-      
+
       console.log('✅ Network interception setup complete in page context');
     })();
   `;
-  
+
   // Inject at the very beginning of the document
   (document.head || document.documentElement).appendChild(script);
   script.remove();
-  
+
   console.log('🎯 Injected interception script into page');
 }
 
@@ -120,11 +120,11 @@ function injectInterceptionScript() {
 window.addEventListener('shopeeDataCollected', (event) => {
   const { offset, totalPages } = event.detail;
   console.log(`🎉 Content script received data collection event: offset ${offset}, total pages: ${totalPages}`);
-  
+
   // Update our tracking
   allOrderData = window.shopeeCollectedData || [];
   collectedPages = window.shopeeCollectedPages || new Set();
-  
+
   console.log(`📊 Current collection status: ${allOrderData.length} pages collected`);
 });
 
@@ -134,16 +134,16 @@ function downloadJSON(data, filename) {
     const jsonString = JSON.stringify(data, null, 2);
     const blob = new Blob([jsonString], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
-    
+
     const link = document.createElement('a');
     link.href = url;
     link.download = filename;
     link.style.display = 'none';
-    
+
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    
+
     URL.revokeObjectURL(url);
     console.log('Downloaded JSON file:', filename);
   } catch (err) {
@@ -154,7 +154,7 @@ function downloadJSON(data, filename) {
 // Function to convert data to CSV format (each row = one item)
 function convertToCSV(data) {
   const csvRows = [];
-  
+
   // CSV Headers
   const headers = [
     'Order ID',
@@ -173,12 +173,12 @@ function convertToCSV(data) {
     'Tracking Info'
   ];
   csvRows.push(headers.join(','));
-  
+
   // Process each page of data
   data.all_data.forEach(pageData => {
     if (pageData.data?.order_data?.details_list) {
       const orders = pageData.data.order_data.details_list;
-      
+
       orders.forEach(order => {
         // Extract order-level information
         const orderId = order.info_card?.order_id || 'N/A';
@@ -186,10 +186,10 @@ function convertToCSV(data) {
         const orderSubtotal = order.info_card?.subtotal ? (order.info_card.subtotal / 100000).toFixed(2) : '0.00';
         const orderFinalTotal = order.info_card?.final_total ? (order.info_card.final_total / 100000).toFixed(2) : '0.00';
         const trackingInfo = order.shipping?.tracking_info?.description || 'N/A';
-        
+
         // Extract date from order ID or shipping info
         let orderDate = 'N/A';
-        
+
         // Method 1: Try to extract from shipping tracking info timestamp
         if (order.shipping?.tracking_info?.ctime) {
           const timestamp = order.shipping.tracking_info.ctime * 1000; // Convert to milliseconds
@@ -203,7 +203,7 @@ function convertToCSV(data) {
             const orderIdStr = String(orderId);
             const timestampPart = orderIdStr.substring(0, 10); // First 10 digits
             const timestamp = parseInt(timestampPart) * 1000; // Convert to milliseconds
-            
+
             // Validate if this gives us a reasonable date (between 2015-2030)
             const date = new Date(timestamp);
             const year = date.getFullYear();
@@ -216,7 +216,7 @@ function convertToCSV(data) {
               const orderIdStr = String(orderId);
               const timestampPart = orderIdStr.substring(0, 13); // First 13 digits (milliseconds)
               const timestamp = parseInt(timestampPart);
-              
+
               const date = new Date(timestamp);
               const year = date.getFullYear();
               if (year >= 2015 && year <= 2030) {
@@ -227,13 +227,13 @@ function convertToCSV(data) {
             }
           }
         }
-        
+
         // Process items in this order
         if (order.info_card?.order_list_cards && Array.isArray(order.info_card.order_list_cards)) {
           order.info_card.order_list_cards.forEach(card => {
             const shopName = card.shop_info?.shop_name || 'N/A';
             const shopId = card.shop_info?.shop_id || 'N/A';
-            
+
             if (card.product_info?.item_groups && Array.isArray(card.product_info.item_groups)) {
               card.product_info.item_groups.forEach(group => {
                 if (group.items && Array.isArray(group.items)) {
@@ -245,7 +245,7 @@ function convertToCSV(data) {
                     const itemPrice = item.item_price ? (item.item_price / 100000).toFixed(2) : '0.00';
                     const itemTotal = item.order_price ? (item.order_price / 100000).toFixed(2) : '0.00';
                     const itemId = item.item_id || 'N/A';
-                    
+
                     // Escape CSV values (handle commas and quotes)
                     const escapeCSV = (value) => {
                       if (typeof value !== 'string') value = String(value);
@@ -254,7 +254,7 @@ function convertToCSV(data) {
                       }
                       return value;
                     };
-                    
+
                     // Create CSV row for this item
                     const row = [
                       escapeCSV(orderId),
@@ -272,7 +272,7 @@ function convertToCSV(data) {
                       escapeCSV(itemId),
                       escapeCSV(trackingInfo)
                     ];
-                    
+
                     csvRows.push(row.join(','));
                   });
                 }
@@ -283,7 +283,7 @@ function convertToCSV(data) {
       });
     }
   });
-  
+
   return csvRows.join('\n');
 }
 
@@ -293,16 +293,16 @@ function downloadCSV(data, filename) {
     const csvContent = convertToCSV(data);
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
-    
+
     const link = document.createElement('a');
     link.href = url;
     link.download = filename;
     link.style.display = 'none';
-    
+
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    
+
     URL.revokeObjectURL(url);
     console.log('Downloaded CSV file:', filename);
   } catch (err) {
@@ -315,16 +315,16 @@ function downloadText(text, filename) {
   try {
     const blob = new Blob([text], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
-    
+
     const link = document.createElement('a');
     link.href = url;
     link.download = filename;
     link.style.display = 'none';
-    
+
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    
+
     URL.revokeObjectURL(url);
     console.log('Downloaded text file:', filename);
   } catch (err) {
@@ -338,47 +338,47 @@ async function collectAllOrderData() {
     console.log('Already collecting data...');
     return;
   }
-  
+
   isCollecting = true;
   allOrderData = [];
   collectedPages.clear();
-  
+
   console.log('Starting natural data collection by slow scrolling...');
-  
+
   let scrollAttempts = 0;
   const maxScrollAttempts = 100; // More attempts since we're going slower
   let noNewDataCounter = 0;
   const maxNoNewDataAttempts = 8; // More patient with slower loading
-  
+
   try {
     while (scrollAttempts < maxScrollAttempts && noNewDataCounter < maxNoNewDataAttempts) {
       const currentDataCount = allOrderData.length;
-      
+
       // Slow, natural scrolling behavior
       const currentScroll = window.pageYOffset;
       const documentHeight = document.body.scrollHeight;
       const viewportHeight = window.innerHeight;
-      
+
       // Scroll gradually, not all the way to bottom at once
       const scrollStep = viewportHeight * 0.7; // Scroll about 70% of viewport
       const targetScroll = Math.min(currentScroll + scrollStep, documentHeight - viewportHeight);
-      
+
       window.scrollTo({
         top: targetScroll,
         behavior: 'smooth'
       });
-      
+
       console.log(`Natural scroll attempt ${scrollAttempts + 1}, scrolled to ${targetScroll}, pages collected: ${allOrderData.length}`);
-      
+
       // Longer wait to mimic natural reading/browsing behavior
       const waitTime = 3000 + Math.random() * 2000; // 3-5 seconds
       await new Promise(resolve => setTimeout(resolve, waitTime));
-      
+
       // Check if we got new data
       if (allOrderData.length === currentDataCount) {
         noNewDataCounter++;
         console.log(`No new data on attempt ${scrollAttempts + 1}, no-new-data counter: ${noNewDataCounter}`);
-        
+
         // If no new data, try a small scroll back up and then down (natural user behavior)
         if (noNewDataCounter % 2 === 0) {
           window.scrollTo({
@@ -396,9 +396,9 @@ async function collectAllOrderData() {
         noNewDataCounter = 0; // Reset counter if we got new data
         console.log(`Got new data! Total pages now: ${allOrderData.length}`);
       }
-      
+
       scrollAttempts++;
-      
+
       // Occasionally scroll to very bottom to trigger end-of-list loading
       if (scrollAttempts % 10 === 0) {
         console.log('Checking if we can load more by scrolling to very bottom...');
@@ -409,7 +409,7 @@ async function collectAllOrderData() {
         await new Promise(resolve => setTimeout(resolve, 4000));
       }
     }
-    
+
     // Download all collected data
     if (allOrderData.length > 0) {
       const combinedData = {
@@ -418,13 +418,13 @@ async function collectAllOrderData() {
         collection_method: 'natural_scrolling',
         all_data: allOrderData
       };
-      
+
       downloadJSON(combinedData, `shopee_all_orders_${Date.now()}.json`);
       console.log(`Successfully collected ${allOrderData.length} pages of order data via natural scrolling`);
     } else {
       console.log('No order data was collected. The page might not be loading data yet, or you might need to be logged in.');
     }
-    
+
   } catch (error) {
     console.error('Error during data collection:', error);
   } finally {
@@ -438,10 +438,10 @@ function init() {
   console.log('Shopee Purchase History Extractor loaded');
   console.log('Current URL:', window.location.href);
   console.log('Page title:', document.title);
-  
+
   // Skip script injection due to CSP, use direct approach instead
   console.log('🔧 Using direct fetch approach (CSP prevents script injection)');
-  
+
   // Add the fetch button
   addFetchButton();
 }
@@ -452,9 +452,9 @@ function startMonitoring() {
     console.log('Already collecting data...');
     return;
   }
-  
+
   isCollecting = true;
-  
+
   // Clear previous data from window object
   if (window.shopeeCollectedData) {
     window.shopeeCollectedData.length = 0;
@@ -462,21 +462,21 @@ function startMonitoring() {
   if (window.shopeeCollectedPages) {
     window.shopeeCollectedPages.clear();
   }
-  
+
   allOrderData = [];
   collectedPages.clear();
-  
+
   console.log('🔍 Started monitoring for API calls. Scroll manually to load more data.');
   console.log('📋 The extension will automatically capture API responses from the page context.');
-  
+
   // Set a timeout to stop monitoring and download data
   setTimeout(() => {
     if (isCollecting) {
       isCollecting = false;
-      
+
       // Get data from window object (injected script)
       const collectedData = window.shopeeCollectedData || [];
-      
+
       if (collectedData.length > 0) {
         const combinedData = {
           total_pages: collectedData.length,
@@ -484,7 +484,7 @@ function startMonitoring() {
           collection_method: 'manual_monitoring',
           all_data: collectedData
         };
-        
+
         downloadJSON(combinedData, `shopee_all_orders_${Date.now()}.json`);
         console.log(`✅ Monitoring complete! Downloaded ${collectedData.length} pages of data.`);
       } else {
@@ -501,12 +501,12 @@ function stopMonitoringAndDownload() {
     console.log('Not currently monitoring...');
     return false;
   }
-  
+
   isCollecting = false;
-  
+
   // Get data from window object (injected script)
   const collectedData = window.shopeeCollectedData || [];
-  
+
   if (collectedData.length > 0) {
     const combinedData = {
       total_pages: collectedData.length,
@@ -514,7 +514,7 @@ function stopMonitoringAndDownload() {
       collection_method: 'manual_monitoring_stopped',
       all_data: collectedData
     };
-    
+
     downloadJSON(combinedData, `shopee_all_orders_${Date.now()}.json`);
     console.log(`✅ Downloaded ${collectedData.length} pages of data.`);
     return true;
@@ -534,10 +534,10 @@ function debugInfo() {
   console.log('- window.shopeeCollectedPages:', window.shopeeCollectedPages);
   console.log('- isCollecting:', isCollecting);
   console.log('- allOrderData length:', allOrderData.length);
-  
+
   // Check if we can access cookies
   console.log('- document.cookie length:', document.cookie.length);
-  
+
   // Try to find any existing order data on the page
   const scripts = document.querySelectorAll('script');
   let foundOrderData = false;
@@ -547,11 +547,11 @@ function debugInfo() {
       foundOrderData = true;
     }
   });
-  
+
   if (!foundOrderData) {
     console.log('- No order_data found in page scripts');
   }
-  
+
   // Test a simple fetch to see what happens
   console.log('- Testing simple API call...');
   fetch('/api/v4/order/get_all_order_and_checkout_list?limit=5&offset=0')
@@ -573,90 +573,90 @@ async function captureHeadersFromRealRequest() {
     console.log('Already capturing headers...');
     return capturedHeaders;
   }
-  
+
   if (capturedHeaders && capturedHeaders['af-ac-enc-dat']) {
     console.log('✅ Using previously captured complete headers');
     return capturedHeaders;
   }
-  
+
   console.log('🎯 Capturing headers from real API call...');
   isCapturingHeaders = true;
-  
+
   return new Promise((resolve) => {
     // Method 1: Try to intercept via XMLHttpRequest override (more reliable)
     const originalXHROpen = XMLHttpRequest.prototype.open;
     const originalXHRSend = XMLHttpRequest.prototype.send;
     let requestCaptured = false;
-    
+
     XMLHttpRequest.prototype.open = function(method, url, ...args) {
       this._captureUrl = url;
       this._captureMethod = method;
       return originalXHROpen.apply(this, [method, url, ...args]);
     };
-    
+
     XMLHttpRequest.prototype.send = function(data) {
       const xhr = this;
-      
+
       // Capture request headers before sending
       if (!requestCaptured && xhr._captureUrl && xhr._captureUrl.includes('/api/v4/order/get_all_order_and_checkout_list')) {
         console.log('🎯 Intercepting XHR request:', xhr._captureUrl);
-        
+
         // Try to extract headers from the XHR object
         const capturedRequestHeaders = {};
-        
+
         // Unfortunately, we can't easily get request headers from XHR after they're set
         // So we'll monitor the response and extract what we can from cookies/page
-        
+
         xhr.addEventListener('load', function() {
           if (!requestCaptured) {
             console.log('📋 XHR completed, extracting available headers...');
-            
+
             // Get what we can from the current page state
             const pageHeaders = extractAllAvailableHeaders();
-            
+
             if (Object.keys(pageHeaders).length > 0) {
               capturedHeaders = pageHeaders;
               requestCaptured = true;
               isCapturingHeaders = false;
-              
+
               console.log('✅ Captured headers from XHR completion');
-              
+
               // Restore original XHR
               XMLHttpRequest.prototype.open = originalXHROpen;
               XMLHttpRequest.prototype.send = originalXHRSend;
-              
+
               resolve(capturedHeaders);
             }
           }
         });
       }
-      
+
       return originalXHRSend.apply(this, arguments);
     };
-    
+
     // Method 2: More aggressive scrolling to trigger API calls
     console.log('📜 Triggering multiple scrolls to generate API call...');
-    
+
     let scrollAttempts = 0;
     const maxScrollAttempts = 3;
-    
+
     const triggerScrolls = async () => {
       for (let i = 0; i < maxScrollAttempts; i++) {
         const currentScroll = window.pageYOffset;
         const targetScroll = currentScroll + window.innerHeight * (i + 1);
-        
+
         console.log(`📜 Scroll attempt ${i + 1}/${maxScrollAttempts}`);
         window.scrollTo({
           top: targetScroll,
           behavior: 'smooth'
         });
-        
+
         // Wait between scrolls
         await new Promise(resolve => setTimeout(resolve, 2000));
-        
+
         if (requestCaptured) break;
       }
-      
+
       // Try going to very bottom
       if (!requestCaptured) {
         console.log('📜 Final attempt: scrolling to very bottom');
@@ -664,23 +664,23 @@ async function captureHeadersFromRealRequest() {
           top: document.body.scrollHeight,
           behavior: 'smooth'
         });
-        
+
         await new Promise(resolve => setTimeout(resolve, 3000));
       }
     };
-    
+
     // Start scrolling
     triggerScrolls().then(() => {
       // Final timeout
       setTimeout(() => {
         if (!requestCaptured) {
           console.log('⚠️ No API call captured after all attempts. Trying page extraction...');
-          
+
           // Restore XHR
           XMLHttpRequest.prototype.open = originalXHROpen;
           XMLHttpRequest.prototype.send = originalXHRSend;
           isCapturingHeaders = false;
-          
+
           // Try comprehensive page extraction
           const fallbackHeaders = extractAllAvailableHeaders();
           if (Object.keys(fallbackHeaders).length > 0) {
@@ -700,16 +700,16 @@ async function captureHeadersFromRealRequest() {
 // Comprehensive header extraction from all available sources
 function extractAllAvailableHeaders() {
   console.log('🔍 Comprehensive: Extracting all available headers...');
-  
+
   const headers = {};
-  
+
   // 1. Get CSRF token from cookie
   const csrfMatch = document.cookie.match(/csrftoken=([^;]+)/);
   if (csrfMatch) {
     headers['x-csrftoken'] = csrfMatch[1];
     console.log('✅ Found CSRF token');
   }
-  
+
   // 2. Look for Shopee tokens in cookies
   const cookieTokens = {
     'shopee_webUnique_ccd': /shopee_webUnique_ccd=([^;]+)/,
@@ -717,7 +717,7 @@ function extractAllAvailableHeaders() {
     'SPC_EC': /SPC_EC=([^;]+)/,
     'SPC_ST': /SPC_ST=([^;]+)/
   };
-  
+
   Object.entries(cookieTokens).forEach(([name, pattern]) => {
     const match = document.cookie.match(pattern);
     if (match) {
@@ -725,7 +725,7 @@ function extractAllAvailableHeaders() {
       // Don't store cookies as headers, but log them for debugging
     }
   });
-  
+
   // 3. Extract from shopee_webUnique_ccd cookie for af-ac-enc tokens
   const uniqueCcdMatch = document.cookie.match(/shopee_webUnique_ccd=([^;]+)/);
   if (uniqueCcdMatch) {
@@ -735,7 +735,7 @@ function extractAllAvailableHeaders() {
       if (parts.length >= 2) {
         headers['af-ac-enc-sz-token'] = decoded; // Use full token
         console.log('✅ Extracted af-ac-enc-sz-token from cookie');
-        
+
         // Try to extract af-ac-enc-dat (usually first part before |)
         if (parts[0]) {
           // af-ac-enc-dat is often derived from the first part
@@ -747,12 +747,12 @@ function extractAllAvailableHeaders() {
       console.log('⚠️ Could not parse shopee_webUnique_ccd');
     }
   }
-  
+
   // 4. Look for tokens in page scripts (more aggressive search)
   const scripts = document.querySelectorAll('script');
   for (const script of scripts) {
     const content = script.textContent;
-    
+
     // Look for various token patterns in scripts
     const tokenPatterns = [
       { name: 'x-sap-ri', pattern: /["']x-sap-ri["']\s*:\s*["']([^"']+)["']/i },
@@ -761,7 +761,7 @@ function extractAllAvailableHeaders() {
       { name: 'af-ac-enc-sz-token', pattern: /["']af-ac-enc-sz-token["']\s*:\s*["']([^"']+)["']/i },
       { name: 'x-sz-sdk-version', pattern: /["']x-sz-sdk-version["']\s*:\s*["']([^"']+)["']/i }
     ];
-    
+
     tokenPatterns.forEach(({ name, pattern }) => {
       if (!headers[name]) { // Only if not already found
         const match = content.match(pattern);
@@ -771,19 +771,19 @@ function extractAllAvailableHeaders() {
         }
       }
     });
-    
+
     // Stop after finding some tokens to avoid processing too many scripts
     if (Object.keys(headers).length > 5) break;
   }
-  
+
   // 5. Look in window object for any exposed tokens
   const windowTokens = [
     'shopee_webUnique_ccd',
-    'csrftoken', 
+    'csrftoken',
     'securityToken',
     'apiToken'
   ];
-  
+
   windowTokens.forEach(tokenName => {
     try {
       if (window[tokenName]) {
@@ -794,7 +794,7 @@ function extractAllAvailableHeaders() {
       // Ignore errors
     }
   });
-  
+
   console.log(`🔍 Extracted ${Object.keys(headers).length} headers:`, Object.keys(headers));
   return headers;
 }
@@ -807,36 +807,74 @@ function extractHeadersFromPageFallback() {
 
 
 // Simple approach: Use same-origin fetch with all cookies
-async function directFetchWithAuth() {
-  console.log('🚀 Starting authenticated fetch...');
-  
+async function directFetchWithAuth(yearFilter = 'all') {
+  console.log('🚀 Starting authenticated fetch...', yearFilter === 'all' ? 'for all years' : `for year ${yearFilter}`);
+
   // Function to update progress (will be available when called from button click)
   const updateProgress = window.updateShopeeProgress || (() => {});
-  
+
   // Get all cookies as string
   const cookies = document.cookie;
   console.log('Using cookies:', cookies.substring(0, 100) + '...');
-  
+
   const allData = [];
   let offset = 0;
   const limit = 5;
   let totalOrdersFound = 0;
-  
+
+  // Helper function to extract year from order
+  function getOrderYear(order) {
+    // Extract date from order ID or shipping info (same logic as convertToCSV)
+    let orderDate = 'N/A';
+
+    // Method 1: Try to extract from shipping tracking info timestamp
+    if (order.shipping?.tracking_info?.ctime) {
+      const timestamp = order.shipping.tracking_info.ctime * 1000;
+      orderDate = new Date(timestamp).toISOString().split('T')[0];
+    }
+    // Method 2: Try to parse Shopee order ID
+    else if (order.info_card?.order_id && String(order.info_card.order_id).length >= 15) {
+      try {
+        const orderIdStr = String(order.info_card.order_id);
+        const timestampPart = orderIdStr.substring(0, 10);
+        const timestamp = parseInt(timestampPart) * 1000;
+        const date = new Date(timestamp);
+        if (date.getFullYear() >= 2015 && date.getFullYear() <= 2030) {
+          orderDate = date.toISOString().split('T')[0];
+        }
+      } catch (e) {
+        try {
+          const orderIdStr = String(order.info_card.order_id);
+          const timestampPart = orderIdStr.substring(0, 13);
+          const timestamp = parseInt(timestampPart);
+          const date = new Date(timestamp);
+          if (date.getFullYear() >= 2015 && date.getFullYear() <= 2030) {
+            orderDate = date.toISOString().split('T')[0];
+          }
+        } catch (e2) {
+          // Keep as 'N/A'
+        }
+      }
+    }
+
+    return orderDate !== 'N/A' ? new Date(orderDate).getFullYear().toString() : 'unknown';
+  }
+
   // Extract required headers from page
   function extractHeadersFromPage() {
     const headers = {};
-    
+
     // Get CSRF token from cookie
     const csrfMatch = document.cookie.match(/csrftoken=([^;]+)/);
     if (csrfMatch) {
       headers['x-csrftoken'] = csrfMatch[1];
     }
-    
+
     // Try to find other tokens in page scripts
     const scripts = document.querySelectorAll('script');
     for (const script of scripts) {
       const content = script.textContent;
-      
+
       // Look for common Shopee tokens
       const patterns = [
         /af-ac-enc-dat["']\s*:\s*["']([^"']+)["']/i,
@@ -844,7 +882,7 @@ async function directFetchWithAuth() {
         /x-sap-ri["']\s*:\s*["']([^"']+)["']/i,
         /x-sap-sec["']\s*:\s*["']([^"']+)["']/i
       ];
-      
+
       patterns.forEach(pattern => {
         const match = content.match(pattern);
         if (match) {
@@ -853,13 +891,13 @@ async function directFetchWithAuth() {
         }
       });
     }
-    
+
     return headers;
   }
-  
+
   const extractedHeaders = extractHeadersFromPage();
   console.log('🔍 Extracted headers from page:', extractedHeaders);
-  
+
   // Headers that mimic a real browser request
   const baseHeaders = {
     'accept': 'application/json',
@@ -878,10 +916,10 @@ async function directFetchWithAuth() {
     'referer': window.location.href,
     'user-agent': navigator.userAgent
   };
-  
+
   // Try to use captured headers first
   let finalHeaders = baseHeaders;
-  
+
   if (capturedHeaders && Object.keys(capturedHeaders).length > 0) {
     console.log('✅ Using captured headers from real request');
     finalHeaders = { ...baseHeaders, ...capturedHeaders };
@@ -889,7 +927,7 @@ async function directFetchWithAuth() {
     // Fallback to extracted headers
     finalHeaders = { ...baseHeaders, ...extractedHeaders };
   }
-  
+
   console.log('🔑 Final headers count:', Object.keys(finalHeaders).length);
   console.log('🔍 Key headers present:', {
     'x-csrftoken': !!finalHeaders['x-csrftoken'],
@@ -897,17 +935,17 @@ async function directFetchWithAuth() {
     'x-sap-ri': !!finalHeaders['x-sap-ri'],
     'x-sap-sec': !!finalHeaders['x-sap-sec']
   });
-  
+
   const headers = finalHeaders;
-  
+
   try {
     const maxPages = 200; // Increased limit: 200 pages × 5 orders = 1000 orders max
     for (let i = 0; i < maxPages; i++) {
       const url = `/api/v4/order/get_all_order_and_checkout_list?limit=${limit}&offset=${offset}`;
       console.log(`Fetching: ${url}`);
-      
+
       updateProgress(`📋 Looking for orders (page ${i + 1})...`, 'info');
-      
+
       const response = await fetch(url, {
         method: 'GET',
         headers: headers,
@@ -915,13 +953,13 @@ async function directFetchWithAuth() {
         referrer: window.location.href,
         referrerPolicy: 'strict-origin-when-cross-origin'
       });
-      
+
       console.log(`Response status: ${response.status}`);
-      
+
       if (!response.ok) {
         const errorText = await response.text();
         console.log(`Error ${response.status}:`, errorText);
-        
+
         if (response.status === 403) {
           updateProgress('🔐 Access denied. Please make sure you are logged in to Shopee.', 'error');
           console.log('🔑 Authentication issue. You might need to:');
@@ -933,27 +971,55 @@ async function directFetchWithAuth() {
         }
         break;
       }
-      
+
       const data = await response.json();
       console.log('Response data:', data);
-      
+
       if (data.data?.order_data?.details_list) {
         const orders = data.data.order_data.details_list;
-        if (orders.length === 0) {
-          updateProgress(`✅ Reached the end! Found ${totalOrdersFound} orders across ${allData.length} pages.`, 'success');
-          console.log('No more orders, stopping...');
-          break;
+
+        // Filter orders by year if specified
+        let filteredOrders = orders;
+        if (yearFilter !== 'all') {
+          filteredOrders = orders.filter(order => getOrderYear(order) === yearFilter);
+          console.log(`📅 Filtered ${orders.length} orders down to ${filteredOrders.length} orders for year ${yearFilter}`);
         }
-        
-        // Count actual orders in this batch
-        const ordersInThisBatch = orders.length;
+
+        if (filteredOrders.length === 0) {
+          // Check if all orders in this page are from previous years
+          if (yearFilter !== 'all' && orders.length > 0) {
+            const allOrdersOlder = orders.every(order => {
+              const orderYear = getOrderYear(order);
+              return orderYear !== 'unknown' && parseInt(orderYear) < parseInt(yearFilter);
+            });
+
+            if (allOrdersOlder) {
+              updateProgress(`✅ Reached orders from previous years! Found ${totalOrdersFound} orders for ${yearFilter}.`, 'success');
+              console.log(`No more orders for ${yearFilter}, all remaining orders are from previous years`);
+              break;
+            }
+          }
+
+          if (orders.length === 0) {
+            updateProgress(`✅ Reached the end! Found ${totalOrdersFound} orders${yearFilter === 'all' ? '' : ` for ${yearFilter}`} across ${allData.length} pages.`, 'success');
+            console.log('No more orders, stopping...');
+            break;
+          }
+        }
+
+        // Count actual orders in this batch (filtered if year specified)
+        const ordersInThisBatch = filteredOrders.length;
         totalOrdersFound += ordersInThisBatch;
-        
-        allData.push(data);
+
+        // Only add page if it contains orders for the selected year
+        if (ordersInThisBatch > 0) {
+          allData.push(data);
+        }
+
         offset += limit;
-        updateProgress(`✅ Page ${i + 1}: Found ${ordersInThisBatch} orders! Total: ${totalOrdersFound} orders`, 'success');
+        updateProgress(`✅ Page ${i + 1}: Found ${ordersInThisBatch} orders${yearFilter === 'all' ? '' : ` for ${yearFilter}`}! Total: ${totalOrdersFound} orders`, 'success');
         console.log(`✅ Added page ${i + 1}, total pages: ${allData.length}`);
-        
+
         // Update summary table with live data
         if (window.updateShopeeProgress && window.liveUpdateSummary) {
           window.liveUpdateSummary(allData, true);
@@ -963,34 +1029,35 @@ async function directFetchWithAuth() {
         console.log('No order data in response, stopping...');
         break;
       }
-      
+
       // Small delay to be respectful
       if (i < 19) { // Don't delay on last iteration
         updateProgress(`⏳ Taking a short break (${totalOrdersFound} orders found so far)...`, 'info');
         await new Promise(resolve => setTimeout(resolve, 1500));
       }
     }
-    
+
     if (allData.length > 0) {
-      updateProgress(`📊 Analyzing ${totalOrdersFound} orders...`, 'info');
-      
+      updateProgress(`📊 Analyzing ${totalOrdersFound} orders${yearFilter === 'all' ? '' : ` for ${yearFilter}`}...`, 'info');
+
       const combinedData = {
         total_pages: allData.length,
         total_orders: totalOrdersFound,
         collected_at: new Date().toISOString(),
         collection_method: 'authenticated_fetch',
+        filter_year: yearFilter,
         all_data: allData
       };
-      
-      updateProgress(`✅ Found ${totalOrdersFound} orders across ${allData.length} pages.`, 'success');
-      console.log(`✅ Success! Collected ${allData.length} pages of order data.`);
+
+      updateProgress(`✅ Found ${totalOrdersFound} orders${yearFilter === 'all' ? '' : ` for ${yearFilter}`} across ${allData.length} pages.`, 'success');
+      console.log(`✅ Success! Collected ${allData.length} pages of order data${yearFilter === 'all' ? '' : ` for year ${yearFilter}`}.`);
       return { success: true, data: combinedData, allData: allData };
     } else {
       updateProgress('❌ No orders found. Please make sure you are logged in to Shopee.', 'error');
       console.log('❌ No data collected.');
       return { success: false, data: null, allData: [] };
     }
-    
+
   } catch (error) {
     console.error('❌ Fetch error:', error);
     updateProgress(`❌ Error: ${error.message}`, 'error');
@@ -1010,7 +1077,35 @@ function addFetchButton() {
     width: 320px;
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   `;
-  
+
+  // Year filter selector
+  const yearSelector = document.createElement('select');
+  yearSelector.id = 'shopee-year-filter';
+  yearSelector.style.cssText = `
+    background: rgba(44, 44, 44, 0.95);
+    color: white;
+    border: 1px solid #555;
+    padding: 10px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: inherit;
+    width: 100%;
+    margin-bottom: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  `;
+  yearSelector.innerHTML = `
+    <option value="all">All Years</option>
+    <option value="2025">2025</option>
+    <option value="2024">2024</option>
+    <option value="2023">2023</option>
+    <option value="2022">2022</option>
+    <option value="2021">2021</option>
+    <option value="2020">2020</option>
+    <option value="2019">2019</option>
+    <option value="2018">2018</option>
+  `;
+
   // Single action button - black design
   const actionButton = document.createElement('button');
   actionButton.textContent = 'Fetch Orders';
@@ -1030,7 +1125,7 @@ function addFetchButton() {
     width: 100%;
     margin-bottom: 8px;
   `;
-  
+
   // Progress status div
   const progressDiv = document.createElement('div');
   progressDiv.style.cssText = `
@@ -1049,7 +1144,7 @@ function addFetchButton() {
     margin-bottom: 8px;
   `;
   progressDiv.id = 'shopee-progress-status';
-  
+
   // Summary table container - Dark Green Theme
   const summaryContainer = document.createElement('div');
   summaryContainer.style.cssText = `
@@ -1062,7 +1157,7 @@ function addFetchButton() {
     margin-bottom: 8px;
   `;
   summaryContainer.id = 'shopee-summary';
-  
+
   // Summary table
   const summaryTable = document.createElement('table');
   summaryTable.style.cssText = `
@@ -1071,7 +1166,7 @@ function addFetchButton() {
     font-size: 13px;
     font-family: inherit;
   `;
-  
+
   // Table header
   const tableHeader = document.createElement('thead');
   tableHeader.innerHTML = `
@@ -1080,7 +1175,7 @@ function addFetchButton() {
       <th style="padding: 12px; text-align: right; font-weight: 600; color: #e8f5e8;">Count</th>
     </tr>
   `;
-  
+
   // Table body
   const tableBody = document.createElement('tbody');
   tableBody.innerHTML = `
@@ -1097,11 +1192,11 @@ function addFetchButton() {
       <td style="padding: 10px 12px; text-align: right; font-weight: 700; color: white; font-size: 14px; text-shadow: 0 1px 2px rgba(0,0,0,0.3);" id="total-amount">RM 0.00</td>
     </tr>
   `;
-  
+
   summaryTable.appendChild(tableHeader);
   summaryTable.appendChild(tableBody);
   summaryContainer.appendChild(summaryTable);
-  
+
   // Download button
   const downloadButton = document.createElement('button');
   downloadButton.textContent = '📊 Download CSV File';
@@ -1120,7 +1215,7 @@ function addFetchButton() {
     display: none;
   `;
   downloadButton.id = 'shopee-download-btn';
-  
+
   // Hover effects
   actionButton.addEventListener('mouseenter', () => {
     if (!actionButton.disabled) {
@@ -1129,7 +1224,7 @@ function addFetchButton() {
       actionButton.style.boxShadow = '0 6px 16px rgba(0,0,0,0.4)';
     }
   });
-  
+
   actionButton.addEventListener('mouseleave', () => {
     if (!actionButton.disabled) {
       actionButton.style.background = '#2c2c2c';
@@ -1137,20 +1232,20 @@ function addFetchButton() {
       actionButton.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
     }
   });
-  
+
   downloadButton.addEventListener('mouseenter', () => {
     downloadButton.style.background = '#047857';
     downloadButton.style.transform = 'translateY(-1px)';
   });
-  
+
   downloadButton.addEventListener('mouseleave', () => {
     downloadButton.style.background = '#059669';
     downloadButton.style.transform = 'translateY(0)';
   });
-  
+
   // Store collected data for download
   let collectedOrderData = null;
-  
+
   // Download button click handler
   downloadButton.onclick = () => {
     if (collectedOrderData) {
@@ -1158,18 +1253,18 @@ function addFetchButton() {
       updateProgress('🎯 CSV file downloaded to your downloads folder!', 'success');
     }
   };
-  
+
   // Function to calculate and update summary (with live updates)
   function updateSummary(allData, isLiveUpdate = false) {
     let totalOrders = 0;
     let totalItems = 0;
     let totalAmount = 0;
-    
+
     allData.forEach(pageData => {
       if (pageData.data?.order_data?.details_list) {
         const orders = pageData.data.order_data.details_list;
         totalOrders += orders.length;
-        
+
         orders.forEach(order => {
           // Count items - correct structure: order.info_card.order_list_cards[].product_info.item_groups[].items[]
           if (order.info_card?.order_list_cards && Array.isArray(order.info_card.order_list_cards)) {
@@ -1185,7 +1280,7 @@ function addFetchButton() {
               }
             });
           }
-          
+
           // Add order total amount - final_total is under info_card
           if (order.info_card?.final_total) {
             totalAmount += order.info_card.final_total;
@@ -1193,39 +1288,39 @@ function addFetchButton() {
         });
       }
     });
-    
+
     // Update UI
     document.getElementById('total-orders').textContent = totalOrders.toLocaleString();
     document.getElementById('total-items').textContent = totalItems.toLocaleString();
     document.getElementById('total-amount').textContent = `RM ${(totalAmount / 100000).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    
+
     // Show summary table immediately when called
     summaryContainer.style.display = 'block';
-    
+
     // Only show download button when complete
     if (!isLiveUpdate) {
       downloadButton.style.display = 'block';
     }
   }
-  
+
   // Combined action: capture headers + fetch data
   actionButton.onclick = async () => {
     if (actionButton.disabled) return;
-    
+
     actionButton.disabled = true;
     actionButton.style.background = '#1a1a1a';
     actionButton.style.cursor = 'not-allowed';
-    
+
     try {
       // Step 1: Capture headers
       actionButton.textContent = 'Preparing...';
       updateProgress('🔧 Preparing to connect to Shopee...', 'info');
-      
+
       let headers = null;
       if (!capturedHeaders || !capturedHeaders['af-ac-enc-dat']) {
         updateProgress('🌐 Connecting to your Shopee account...', 'info');
         headers = await captureHeadersFromRealRequest();
-        
+
         if (!headers || Object.keys(headers).length === 0) {
           updateProgress('❌ Unable to connect. Please make sure you are logged in to Shopee.', 'error');
           console.log('❌ Could not capture headers');
@@ -1236,22 +1331,24 @@ function addFetchButton() {
       } else {
         updateProgress('✅ Already connected to your account', 'success');
       }
-      
+
       // Step 2: Fetch data
+      const selectedYear = yearSelector.value;
       actionButton.textContent = 'Downloading...';
-      updateProgress('📦 Starting to download your orders...', 'info');
-      
+      const yearText = selectedYear === 'all' ? '' : ` for ${selectedYear}`;
+      updateProgress(`📦 Starting to download your orders${yearText}...`, 'info');
+
       // Show empty summary table immediately
       summaryContainer.style.display = 'block';
-      
-      const fetchResult = await directFetchWithAuth();
-      
+
+      const fetchResult = await directFetchWithAuth(selectedYear);
+
       // Step 3: Show result
       if (fetchResult.success) {
         actionButton.textContent = '✓ Complete!';
         actionButton.style.background = '#22c55e';
         updateProgress('🎉 Analysis complete! Check your summary below.', 'success');
-        
+
         // Store data and update summary
         collectedOrderData = fetchResult.data;
         updateSummary(fetchResult.allData);
@@ -1260,14 +1357,14 @@ function addFetchButton() {
         actionButton.style.background = '#ef4444';
         updateProgress('❌ Something went wrong. Please make sure you are logged in to Shopee.', 'error');
       }
-      
+
     } catch (error) {
       console.error('Error:', error);
       actionButton.textContent = '✗ Error';
       actionButton.style.background = '#ef4444';
       updateProgress('❌ Something went wrong. Please try again or refresh the page.', 'error');
     }
-    
+
     // Reset button after 5 seconds and hide progress
     setTimeout(() => {
       actionButton.textContent = 'Fetch Orders';
@@ -1277,12 +1374,12 @@ function addFetchButton() {
       hideProgress();
     }, 5000);
   };
-  
+
   // Helper function to update progress status
   function updateProgress(message, type = 'info') {
     progressDiv.style.display = 'block';
     progressDiv.innerHTML = message;
-    
+
     // Color coding based on type
     switch(type) {
       case 'success':
@@ -1298,16 +1395,17 @@ function addFetchButton() {
         progressDiv.style.borderLeft = '4px solid #3b82f6';
     }
   }
-  
+
   // Helper function to hide progress
   function hideProgress() {
     progressDiv.style.display = 'none';
   }
-  
+
   // Make functions globally available
   window.updateShopeeProgress = updateProgress;
   window.liveUpdateSummary = updateSummary;
 
+  container.appendChild(yearSelector);
   container.appendChild(actionButton);
   container.appendChild(progressDiv);
   container.appendChild(summaryContainer);
@@ -1346,10 +1444,10 @@ function init() {
   console.log('Shopee Purchase History Extractor loaded');
   console.log('Current URL:', window.location.href);
   console.log('Page title:', document.title);
-  
+
   // Skip script injection due to CSP, use direct approach instead
   console.log('🔧 Using direct fetch approach (CSP prevents script injection)');
-  
+
   // Add the fetch button
   addFetchButton();
 }
@@ -1364,14 +1462,14 @@ function startUrlPolling() {
   if (urlCheckInterval) {
     clearInterval(urlCheckInterval);
   }
-  
+
   // Poll every 500ms for URL changes
   urlCheckInterval = setInterval(() => {
     if (currentUrl !== window.location.href) {
       const oldUrl = currentUrl;
       currentUrl = window.location.href;
       console.log('🔍 URL changed from:', oldUrl, 'to:', currentUrl);
-      
+
       // Multiple checks with different delays to ensure page content is loaded
       setTimeout(handlePageChange, 500);
       setTimeout(handlePageChange, 1000);
@@ -1384,7 +1482,7 @@ function startUrlPolling() {
 const pageObserver = new MutationObserver((mutations) => {
   // Check for significant page changes
   let significantChange = false;
-  
+
   mutations.forEach((mutation) => {
     // Look for changes that might indicate page navigation
     if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
@@ -1404,7 +1502,7 @@ const pageObserver = new MutationObserver((mutations) => {
       });
     }
   });
-  
+
   if (significantChange) {
     console.log('📄 Significant page change detected');
     setTimeout(handlePageChange, 1000);
